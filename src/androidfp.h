@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QList>
 #include <QString>
+#include <QTimer>
 
 #include "biometry.h"
 
@@ -34,6 +35,7 @@ signals:
 
 private:
     void enumerateCallback(uint32_t finger, uint32_t remaining);
+    QTimer m_enumerateTimeout;
     void enrollCallback(uint32_t finger, uint32_t remaining);
     void removeCallback(uint32_t finger, uint32_t remaining);
     void acquiredCallback(UHardwareBiometryFingerprintAcquiredInfo info);
