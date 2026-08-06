@@ -485,6 +485,15 @@ void FPDCommunity::slot_removed(uint32_t finger)
     // onRemoved() only says the HAL considers the operation finished, not that
     // the template left the store, so re-enumerate before dropping the name.
     // Fail-closed: keep the entry unless it is observed to be gone.
+
+    // A terminating onRemoved(fid=0) would start a second round that races the
+    // first and fails a removal that succeeded, so verify once per request.
+    if (m_verifyingRemoval) {
+        qDebug() << Q_FUNC_INFO << "verification already in flight; ignoring"
+                 << "additional removed callback for" << finger;
+        return;
+    }
+
     m_removedFinger = finger;
     m_verifyingRemoval = true;
     m_androidFP.enumerate();
