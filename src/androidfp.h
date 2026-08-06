@@ -21,6 +21,9 @@ public:
     void enumerate();
     void clear();
     QList<uint32_t> fingerprints() const;
+    // False when the last enumeration did not actually come back from the HAL,
+    // i.e. fingerprints() means "unknown", not "the store is empty".
+    bool fingerprintsKnown() const;
 
     static QString getDefaultGroupPath(uint32_t uid);
 
@@ -54,6 +57,7 @@ private:
     float m_enrollRemaining = 0.0;
     uint32_t m_removingFinger = 0;
     QList<uint32_t> m_fingers;
+    bool m_fingersKnown = false;
 };
 
 #endif // ANDROIDFP_H

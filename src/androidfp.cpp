@@ -140,6 +140,7 @@ void AndroidFP::enumerate()
 {
     qDebug() << Q_FUNC_INFO;
     m_fingers.clear();
+    m_fingersKnown = false;
 
     // Some HALs never invoke the enumerate callback when no templates are
     // enrolled, leaving the daemon stuck in FPSTATE_ENUMERATING. Treat silence
@@ -148,7 +149,16 @@ void AndroidFP::enumerate()
     m_enumerateTimeout.stop();
     UHardwareBiometryRequestStatus ret = u_hardware_biometry_enumerate(m_biometry);
     if (ret != SYS_OK) {
+        // karatep's HAL fails enumerate() whenever templates exist: the FPC
+        // vendor library returns the template count and the HIDL service
+        // treats any non-zero as an error --
+        //     fpc_fingerprint_hal: fpc_enumerate indices_count 2
+        //     ...fingerprint@2.0-service: An unknown error returned from
+        //                                 fingerprint vendor library: 2
+        // Finish the round anyway, with m_fingersKnown false, so FPDCommunity
+        // still loads the persisted map instead of never being told at all.
         failed(QString::fromUtf8(IntToStringRequestStatus(ret).data()));
+        emit enumerated();
         return;
     }
     m_enumerateTimeout.start();
@@ -170,14 +180,21 @@ QList<uint32_t> AndroidFP::fingerprints() const
     return m_fingers;
 }
 
+bool AndroidFP::fingerprintsKnown() const
+{
+    return m_fingersKnown;
+}
+
 void AndroidFP::enumerateCallback(uint32_t finger, uint32_t remaining)
 {
     qDebug() << Q_FUNC_INFO << finger << remaining;
     m_enumerateTimeout.stop();
     if (finger != 0)
         m_fingers.push_back(finger);
-    if (remaining == 0)
+    if (remaining == 0) {
+        m_fingersKnown = true;
         emit enumerated();
+    }
 }
 
 void AndroidFP::enrollCallback(uint32_t finger, uint32_t remaining)

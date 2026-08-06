@@ -191,6 +191,20 @@ void FPDCommunity::loadFingers()
 
     QList<uint32_t> enumeratedFingers = m_androidFP.fingerprints();
 
+    // Only reconcile when the HAL actually told us what is in the store. On
+    // karatep enumerate() fails outright whenever templates exist, so an empty
+    // list means "unknown". Reconciling against it would drop every finger
+    // loaded above and saveFingers() would make that permanent: the names
+    // vanish while the templates stay in the FPC trustlet, the UI shows nothing
+    // enrolled, and re-enrolling the same finger is then rejected by the TEE
+    // with "do_enroll finger already enrolled" / ERROR_VENDOR: 1.
+    if (!m_androidFP.fingerprintsKnown()) {
+        qWarning() << "Enumeration unavailable; keeping" << m_fingerMap.size()
+                   << "stored finger(s) as-is and skipping reconcile";
+        qDebug() << "Loaded finger map (unreconciled):" << m_fingerMap;
+        return;
+    }
+
     //Check each of the loaded prints to ensure it was loaded from the store
     QList<uint32_t> keys = m_fingerMap.keys();
     for (int i = 0; i < keys.size(); ++i) {
