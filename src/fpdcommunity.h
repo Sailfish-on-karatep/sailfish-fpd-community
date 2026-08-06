@@ -124,6 +124,7 @@ public:
 
     /* Community DBUS API additions */
     Q_INVOKABLE void Clear(const QDBusMessage &message);
+    void finishRemoval();
 
 private slots:
     void slot_enrollProgress(float pc);
@@ -153,6 +154,8 @@ private:
     State m_state = FPSTATE_IDLE;
     AcquiredState m_acquired = FPACQUIRED_UNSPECIFIED;
     QString m_addingFinger;
+    bool m_verifyingRemoval = false;
+    uint32_t m_removedFinger = 0;
 
     void setState(State newState);
     void registerDBus();

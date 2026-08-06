@@ -191,14 +191,9 @@ void FPDCommunity::loadFingers()
 
     QList<uint32_t> enumeratedFingers = m_androidFP.fingerprints();
 
-    // Only reconcile when the HAL actually told us what is in the store. On
-    // karatep enumerate() fails outright whenever templates exist, so an empty
-    // list means "unknown". Reconciling against it would drop every finger
-    // loaded above and saveFingers() would make that permanent: the names
-    // vanish while the templates stay in the FPC trustlet, the UI shows nothing
-    // enrolled, and re-enrolling the same finger is then rejected by the TEE
-    // with "do_enroll finger already enrolled" / ERROR_VENDOR: 1.
-    if (!m_androidFP.fingerprintsKnown()) {
+    // Never prune against a list that did not come from the HAL: the names are
+    // persisted, so saveFingers() would make an unknown result permanent.
+    if (!m_androidFP.enumerationAuthoritative()) {
         qWarning() << "Enumeration unavailable; keeping" << m_fingerMap.size()
                    << "stored finger(s) as-is and skipping reconcile";
         qDebug() << "Loaded finger map (unreconciled):" << m_fingerMap;
@@ -486,13 +481,51 @@ void FPDCommunity::slot_acquired(int info)
 void FPDCommunity::slot_removed(uint32_t finger)
 {
     qDebug() << Q_FUNC_INFO << finger;
+
+    // onRemoved() only says the HAL considers the operation finished, not that
+    // the template left the store, so re-enumerate before dropping the name.
+    // Fail-closed: keep the entry unless it is observed to be gone.
+    m_removedFinger = finger;
+    m_verifyingRemoval = true;
+    m_androidFP.enumerate();
+}
+
+void FPDCommunity::finishRemoval()
+{
+    m_verifyingRemoval = false;
+    const uint32_t finger = m_removedFinger;
+    m_removedFinger = 0;
+
+    if (!m_androidFP.enumerationAuthoritative()) {
+        qWarning() << Q_FUNC_INFO << "cannot confirm removal of" << finger
+                   << "- enumeration is not authoritative; keeping the entry";
+        emit ErrorInfo(QStringLiteral("Removal could not be confirmed"));
+        emit Failed();
+        setState(FPSTATE_IDLE);
+        return;
+    }
+
+    const QList<uint32_t> present = m_androidFP.fingerprints();
+    QList<uint32_t> stillPresent;
+    for (uint32_t k : (finger == 0 ? m_fingerMap.keys() : QList<uint32_t>{finger})) {
+        if (present.contains(k))
+            stillPresent.append(k);
+    }
+
+    if (!stillPresent.isEmpty()) {
+        qWarning() << Q_FUNC_INFO << "HAL reported removal but" << stillPresent
+                   << "are still enrolled; keeping them and failing the request";
+        emit ErrorInfo(QStringLiteral("Fingerprint was not removed"));
+        emit Failed();
+        setState(FPSTATE_IDLE);
+        return;
+    }
+
     if (finger != 0) {
-        QString f = m_fingerMap[finger];
-        emit Removed(f);
+        emit Removed(m_fingerMap[finger]);
         m_fingerMap.remove(finger);
     } else {
-        QStringList values = m_fingerMap.values();
-        for (auto f: values)
+        for (const QString &f : m_fingerMap.values())
             emit Removed(f);
         m_fingerMap.clear();
     }
@@ -525,6 +558,12 @@ void FPDCommunity::slot_cancelIdentify()
 void FPDCommunity::slot_enumerated()
 {
     qDebug() << Q_FUNC_INFO;
+
+    if (m_verifyingRemoval) {
+        finishRemoval();
+        return;
+    }
+
     loadFingers();
     emit ListChanged();
     setState(FPSTATE_IDLE);
