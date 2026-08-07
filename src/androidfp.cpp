@@ -58,11 +58,8 @@ AndroidFP::AndroidFP(QObject *parent) : QObject(parent), m_biometry(u_hardware_b
     m_enumerateTimeout.setSingleShot(true);
     m_enumerateTimeout.setInterval(3000);
     connect(&m_enumerateTimeout, &QTimer::timeout, this, [this]() {
-        // Silence is only evidence of an empty store on a HAL that is known to
-        // answer: enumerate() returned SYS_OK and this sensor has reported
-        // templates before, so having nothing to report is why it said nothing.
-        // Until it has answered once, silence cannot be told apart from a HAL
-        // that accepted the call and never replied, and stays "not known".
+        // A HAL that answers when it holds templates and says nothing here
+        // holds none. Before its first reply silence proves nothing.
         if (m_halAnswersEnumerate)
             m_enumerationAuthoritative = true;
         qWarning() << "AndroidFP: enumerate produced no callback, assuming"
@@ -150,10 +147,8 @@ void AndroidFP::enumerate()
     m_fingers.clear();
     m_enumerationAuthoritative = false;
 
-    // Some HALs never invoke the enumerate callback when no templates are
-    // enrolled, leaving the daemon stuck in FPSTATE_ENUMERATING. Treat silence
-    // as an empty store: finish the round if nothing arrives. A HAL that does
-    // answer stops the timer in enumerateCallback().
+    // Some HALs never invoke the callback when nothing is enrolled, which would
+    // leave the daemon stuck in FPSTATE_ENUMERATING; the timeout ends the round.
     m_enumerateTimeout.stop();
     UHardwareBiometryRequestStatus ret = u_hardware_biometry_enumerate(m_biometry);
     if (ret != SYS_OK) {

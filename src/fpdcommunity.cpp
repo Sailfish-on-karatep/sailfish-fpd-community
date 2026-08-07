@@ -221,12 +221,9 @@ void FPDCommunity::loadFingers()
         }
     }
 
-    // The map lives in the rootfs; the templates are in the Android store, which
-    // outlives it. Templates present with no map at all therefore belong to a
-    // previous installation and to no user here, so drop them rather than let
-    // the loop above adopt them. They stay in the map only so finishRemoval()
-    // can verify the removal, and nothing is persisted until it does: if the
-    // removal fails the file stays absent and the next start retries.
+    // The map lives in the rootfs, the templates in the Android store, which
+    // outlives it: with no map at all these are from a previous installation.
+    // They stay in the map only until finishRemoval() confirms the removal.
     if (!everEnrolled && !m_fingerMap.isEmpty()) {
         qWarning() << "No finger map at" << m_fingerDatabasePath << "but"
                    << m_fingerMap.size() << "template(s) enrolled; they are left"
