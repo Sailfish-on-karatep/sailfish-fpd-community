@@ -58,6 +58,9 @@ private:
     uint32_t m_removingFinger = 0;
     QList<uint32_t> m_fingers;
     bool m_enumerationAuthoritative = false;
+    // Set once the HAL has replied to any enumerate, which is what makes a
+    // later silent round meaningful.
+    bool m_halAnswersEnumerate = false;
 };
 
 #endif // ANDROIDFP_H

@@ -58,8 +58,16 @@ AndroidFP::AndroidFP(QObject *parent) : QObject(parent), m_biometry(u_hardware_b
     m_enumerateTimeout.setSingleShot(true);
     m_enumerateTimeout.setInterval(3000);
     connect(&m_enumerateTimeout, &QTimer::timeout, this, [this]() {
+        // Silence is only evidence of an empty store on a HAL that is known to
+        // answer: enumerate() returned SYS_OK and this sensor has reported
+        // templates before, so having nothing to report is why it said nothing.
+        // Until it has answered once, silence cannot be told apart from a HAL
+        // that accepted the call and never replied, and stays "not known".
+        if (m_halAnswersEnumerate)
+            m_enumerationAuthoritative = true;
         qWarning() << "AndroidFP: enumerate produced no callback, assuming"
-                   << m_fingers.count() << "enrolled fingerprint(s)";
+                   << m_fingers.count() << "enrolled fingerprint(s);"
+                   << (m_enumerationAuthoritative ? "authoritative" : "not authoritative");
         emit enumerated();
     });
 }
@@ -183,6 +191,7 @@ void AndroidFP::enumerateCallback(uint32_t finger, uint32_t remaining)
 {
     qDebug() << Q_FUNC_INFO << finger << remaining;
     m_enumerateTimeout.stop();
+    m_halAnswersEnumerate = true;
     if (finger != 0)
         m_fingers.push_back(finger);
     if (remaining == 0) {
