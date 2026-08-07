@@ -53,6 +53,20 @@ AndroidFP::AndroidFP(QObject *parent) : QObject(parent), m_biometry(u_hardware_b
     fp_params.enumerate_cb = enumerate_cb;
     fp_params.context = this;
     u_hardware_biometry_setNotify(m_biometry, &fp_params);
+
+    // Fallback for HALs that never answer enumerate(); see there.
+    m_enumerateTimeout.setSingleShot(true);
+    m_enumerateTimeout.setInterval(3000);
+    connect(&m_enumerateTimeout, &QTimer::timeout, this, [this]() {
+        // A HAL that answers when it holds templates and says nothing here
+        // holds none. Before its first reply silence proves nothing.
+        if (m_halAnswersEnumerate)
+            m_enumerationAuthoritative = true;
+        qWarning() << "AndroidFP: enumerate produced no callback, assuming"
+                   << m_fingers.count() << "enrolled fingerprint(s);"
+                   << (m_enumerationAuthoritative ? "authoritative" : "not authoritative");
+        emit enumerated();
+    });
 }
 
 QString AndroidFP::getDefaultGroupPath(uint32_t uid)
@@ -131,10 +145,20 @@ void AndroidFP::enumerate()
 {
     qDebug() << Q_FUNC_INFO;
     m_fingers.clear();
+    m_enumerationAuthoritative = false;
+
+    // Some HALs never invoke the callback when nothing is enrolled, which would
+    // leave the daemon stuck in FPSTATE_ENUMERATING; the timeout ends the round.
+    m_enumerateTimeout.stop();
     UHardwareBiometryRequestStatus ret = u_hardware_biometry_enumerate(m_biometry);
     if (ret != SYS_OK) {
+        // Finish the round anyway so callers are not left waiting, but leave it
+        // non-authoritative: some HALs fail a call that in fact succeeded.
         failed(QString::fromUtf8(IntToStringRequestStatus(ret).data()));
+        emit enumerated();
+        return;
     }
+    m_enumerateTimeout.start();
 }
 
 void AndroidFP::clear()
@@ -153,13 +177,22 @@ QList<uint32_t> AndroidFP::fingerprints() const
     return m_fingers;
 }
 
+bool AndroidFP::enumerationAuthoritative() const
+{
+    return m_enumerationAuthoritative;
+}
+
 void AndroidFP::enumerateCallback(uint32_t finger, uint32_t remaining)
 {
     qDebug() << Q_FUNC_INFO << finger << remaining;
+    m_enumerateTimeout.stop();
+    m_halAnswersEnumerate = true;
     if (finger != 0)
         m_fingers.push_back(finger);
-    if (remaining == 0)
+    if (remaining == 0) {
+        m_enumerationAuthoritative = true;
         emit enumerated();
+    }
 }
 
 void AndroidFP::enrollCallback(uint32_t finger, uint32_t remaining)

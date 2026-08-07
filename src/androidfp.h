@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QList>
 #include <QString>
+#include <QTimer>
 
 #include "biometry.h"
 
@@ -20,6 +21,9 @@ public:
     void enumerate();
     void clear();
     QList<uint32_t> fingerprints() const;
+    // False when the round was ended by the timeout or a failed call: an empty
+    // fingerprints() then means "not known", not "the store is empty".
+    bool enumerationAuthoritative() const;
 
     static QString getDefaultGroupPath(uint32_t uid);
 
@@ -34,6 +38,7 @@ signals:
 
 private:
     void enumerateCallback(uint32_t finger, uint32_t remaining);
+    QTimer m_enumerateTimeout;
     void enrollCallback(uint32_t finger, uint32_t remaining);
     void removeCallback(uint32_t finger, uint32_t remaining);
     void acquiredCallback(UHardwareBiometryFingerprintAcquiredInfo info);
@@ -52,6 +57,10 @@ private:
     float m_enrollRemaining = 0.0;
     uint32_t m_removingFinger = 0;
     QList<uint32_t> m_fingers;
+    bool m_enumerationAuthoritative = false;
+    // Set once the HAL has replied to any enumerate, which is what makes a
+    // later silent round meaningful.
+    bool m_halAnswersEnumerate = false;
 };
 
 #endif // ANDROIDFP_H
