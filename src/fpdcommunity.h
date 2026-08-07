@@ -156,6 +156,7 @@ private:
     QString m_addingFinger;
     bool m_verifyingRemoval = false;
     uint32_t m_removedFinger = 0;
+    bool m_clearOrphans = false;
 
     void setState(State newState);
     void registerDBus();
